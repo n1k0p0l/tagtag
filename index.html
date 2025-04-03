@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Location Tagger</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.3/leaflet.css" />
+  <style>
+    body,
+    html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      font-family: Arial, sans-serif;
+    }
+
+    #map {
+      height: 75vh;
+      width: 100%;
+    }
+
+    .controls {
+      padding: 10px;
+      background-color: #f5f5f5;
+    }
+
+    .btn {
+      padding: 8px 12px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      background-color: #4CAF50;
+      color: white;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      background-color: #45a049;
+    }
+
+    .tag-btn {
+      padding: 8px 12px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #water-btn {
+      background-color: #03A9F4;
+      color: white;
+    }
+
+    #tree-btn {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    #shrub-btn {
+      background-color: #8BC34A;
+      color: white;
+    }
+
+    .active {
+      box-shadow: 0 0 5px 2px rgba(0, 0, 0, 0.3);
+    }
+
+    .status {
+      padding: 10px;
+      color: #333;
+      font-size: 14px;
+    }
+
+    .footer {
+      position: fixed;
+      bottom: 0;
+      width: 100%;
+      background-color: #f5f5f5;
+      padding: 10px;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="controls">
+    <div>
+      <button id="locate-btn" class="btn">Get My Location</button>
+      <button id="save-btn" class="btn">Save Data</button>
+      <button id="load-btn" class="btn">Load Data</button>
+    </div>
+    <div>
+      <button id="water-btn" class="tag-btn">Water</button>
+      <button id="tree-btn" class="tag-btn">Tree</button>
+      <button id="shrub-btn" class="tag-btn">Shrub</button>
+    </div>
+    <div class="status" id="status">Status: Ready</div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="footer">
+    <input type="file" id="file-input" style="display: none;">
+    <a id="download-link" style="display: none;"></a>
+    <div id="stats">Total Points: 0 (Water: 0, Trees: 0, Shrubs: 0)</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.3/leaflet.js"></script>
+  <script>
+    // Initialize variables
+    let map;
+    let currentPosition;
+    let markers = [];
+    let selectedTag = null;
+    let stats = {
+      water: 0,
+      tree: 0,
+      shrub: 0
+    };
+
+    // Initialize map
+    function initMap() {
+      map = L.map('map').setView([0, 0], 2);
+
+      // Add satellite layer (from Esri)
+      const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Imagery © Esri'
+      }).addTo(map);
+
+      // Add OpenStreetMap vector layer
+      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        opacity: 0.7
+      }).addTo(map);
+
+      // Add click event to map
+      map.on('click', onMapClick);
+
+      // Get current location
+      getCurrentLocation();
+    }
+
+    // Get current location
+    function getCurrentLocation() {
+      updateStatus("Getting your location...");
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            currentPosition = [lat, lng];
+
+            // Center map on current position
+            map.setView(currentPosition, 18);
+
+            // Add marker for current position
+            const currentMarker = L.marker(currentPosition).addTo(map);
+            currentMarker.bindPopup("You are here").openPopup();
+
+            updateStatus("Location found");
+          },
+          (error) => {
+            console.error("Error getting location:", error);
+            updateStatus("Error getting location: " + error.message);
+          }
+        );
+      } else {
+        updateStatus("Geolocation is not supported by your browser");
+      }
+    }
+
+    // Update status message
+    function updateStatus(message) {
+      document.getElementById("status").textContent = "Status: " + message;
+    }
+
+    // Handle map click
+    function onMapClick(e) {
+      if (!selectedTag) {
+        updateStatus("Please select a tag type first");
+        return;
+      }
+
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+
+      // Create marker based on selected tag
+      let markerIcon;
+      let markerColor;
+
+      if (selectedTag === "water") {
+        markerColor = "#03A9F4";
+        markerIcon = createMarkerIcon("💧", markerColor);
+        stats.water++;
+      } else if (selectedTag === "tree") {
+        markerColor = "#4CAF50";
+        markerIcon = createMarkerIcon("🌲", markerColor);
+        stats.tree++;
+      } else if (selectedTag === "shrub") {
+        markerColor = "#8BC34A";
+        markerIcon = createMarkerIcon("🌿", markerColor);
+        stats.shrub++;
+      }
+
+      const marker = L.marker([lat, lng], { icon: markerIcon }).addTo(map);
+      marker.bindPopup(`${selectedTag.charAt(0).toUpperCase() + selectedTag.slice(1)} at [${lat.toFixed(6)}, ${lng.toFixed(6)}]`);
+
+      // Add marker to list
+      markers.push({
+        type: selectedTag,
+        lat: lat,
+        lng: lng,
+        time: new Date().toISOString()
+      });
+
+      updateStatus(`Added ${selectedTag} marker`);
+      updateStats();
+    }
+
+    // Create custom marker icon
+    function createMarkerIcon(symbol, color) {
+      return L.divIcon({
+        className: 'custom-marker',
+        html: `<div style="background-color: ${color}; width: 25px; height: 25px; border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-size: 14px;">${symbol}</div>`,
+        iconSize: [25, 25],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -10]
+      });
+    }
+
+    // Handle save data
+    function saveData() {
+      if (markers.length === 0) {
+        updateStatus("No markers to save");
+        return;
+      }
+
+      const data = {
+        markers: markers,
+        stats: stats,
+        lastUpdated: new Date().toISOString()
+      };
+
+      const dataStr = JSON.stringify(data, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+
+      const downloadLink = document.getElementById('download-link');
+      downloadLink.href = URL.createObjectURL(dataBlob);
+      downloadLink.download = 'location-tags.json';
+      downloadLink.click();
+
+      updateStatus("Data saved to file");
+    }
+
+    // Handle load data
+    function loadData() {
+      document.getElementById('file-input').click();
+    }
+
+    // Process loaded file
+    function processFile(file) {
+      const reader = new FileReader();
+
+      reader.onload = function (e) {
+        try {
+          const data = JSON.parse(e.target.result);
+
+          if (data.markers && Array.isArray(data.markers)) {
+            // Clear existing markers from map
+            clearMarkers();
+
+            // Add loaded markers
+            markers = data.markers;
+
+            // Update stats
+            if (data.stats) {
+              stats = data.stats;
+            } else {
+              // Recalculate stats if not in file
+              recalculateStats();
+            }
+
+            // Add markers to map
+            displayMarkers();
+            updateStats();
+
+            updateStatus(`Loaded ${markers.length} markers from file`);
+          } else {
+            updateStatus("Invalid data format in file");
+          }
+        } catch (error) {
+          console.error("Error parsing JSON:", error);
+          updateStatus("Error loading file: Invalid format");
+        }
+      };
+
+      reader.readAsText(file);
+    }
+
+    // Clear markers from map
+    function clearMarkers() {
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Marker) {
+          map.removeLayer(layer);
+        }
+      });
+
+      // Re-add current position marker if available
+      if (currentPosition) {
+        const currentMarker = L.marker(currentPosition).addTo(map);
+        currentMarker.bindPopup("You are here");
+      }
+    }
+
+    // Display markers on map
+    function displayMarkers() {
+      markers.forEach(marker => {
+        let markerIcon;
+        let markerColor;
+
+        if (marker.type === "water") {
+          markerColor = "#03A9F4";
+          markerIcon = createMarkerIcon("💧", markerColor);
+        } else if (marker.type === "tree") {
+          markerColor = "#4CAF50";
+          markerIcon = createMarkerIcon("🌲", markerColor);
+        } else if (marker.type === "shrub") {
+          markerColor = "#8BC34A";
+          markerIcon = createMarkerIcon("🌿", markerColor);
+        }
+
+        const mapMarker = L.marker([marker.lat, marker.lng], { icon: markerIcon }).addTo(map);
+        mapMarker.bindPopup(`${marker.type.charAt(0).toUpperCase() + marker.type.slice(1)} at [${marker.lat.toFixed(6)}, ${marker.lng.toFixed(6)}]`);
+      });
+    }
+
+    // Recalculate stats from markers
+    function recalculateStats() {
+      stats = {
+        water: 0,
+        tree: 0,
+        shrub: 0
+      };
+
+      markers.forEach(marker => {
+        if (marker.type === "water") stats.water++;
+        else if (marker.type === "tree") stats.tree++;
+        else if (marker.type === "shrub") stats.shrub++;
+      });
+    }
+
+    // Update stats display
+    function updateStats() {
+      const total = stats.water + stats.tree + stats.shrub;
+      document.getElementById('stats').textContent =
+        `Total Points: ${total} (Water: ${stats.water}, Trees: ${stats.tree}, Shrubs: ${stats.shrub})`;
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function () {
+      // Initialize map
+      initMap();
+
+      // Button event listeners
+      document.getElementById('locate-btn').addEventListener('click', getCurrentLocation);
+      document.getElementById('save-btn').addEventListener('click', saveData);
+      document.getElementById('load-btn').addEventListener('click', loadData);
+
+      // Tag button event listeners
+      const tagButtons = document.querySelectorAll('.tag-btn');
+      tagButtons.forEach(button => {
+        button.addEventListener('click', function () {
+          // Remove active class from all tag buttons
+          tagButtons.forEach(btn => btn.classList.remove('active'));
+
+          // Add active class to clicked button
+          this.classList.add('active');
+
+          // Set selected tag
+          selectedTag = this.id.replace('-btn', '');
+          updateStatus(`Selected tag: ${selectedTag}`);
+        });
+      });
+
+      // File input event listener
+      document.getElementById('file-input').addEventListener('change', function (e) {
+        if (e.target.files.length > 0) {
+          processFile(e.target.files[0]);
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>
