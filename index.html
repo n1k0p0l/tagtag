@@ -122,17 +122,22 @@
 
     // Initialize map
     function initMap() {
-      map = L.map('map').setView([0, 0], 2);
+      map = L.map('map', {
+        maxZoom: 22,  // Increased maximum zoom level
+        zoomControl: true
+      }).setView([0, 0], 2);
 
       // Add satellite layer (from Esri)
       const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Imagery © Esri'
+        attribution: 'Imagery © Esri',
+        maxZoom: 22  // Ensure satellite layer supports high zoom
       }).addTo(map);
 
       // Add OpenStreetMap vector layer
       const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
-        opacity: 0.7
+        opacity: 0.7,
+        maxZoom: 19  // OSM typically supports up to zoom level 19
       }).addTo(map);
 
       // Add click event to map
@@ -142,29 +147,45 @@
       getCurrentLocation();
     }
 
-    // Get current location
+    // Get current location with high accuracy
     function getCurrentLocation() {
-      updateStatus("Getting your location...");
+      updateStatus("Getting your location with high precision...");
       if (navigator.geolocation) {
+        const options = {
+          enableHighAccuracy: true,  // Request best possible precision
+          timeout: 10000,            // 10 second timeout
+          maximumAge: 0              // Don't use cached position
+        };
+
         navigator.geolocation.getCurrentPosition(
           (position) => {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
             currentPosition = [lat, lng];
 
-            // Center map on current position
-            map.setView(currentPosition, 18);
+            // Center map on current position with higher zoom
+            map.setView(currentPosition, 20);  // Increased zoom level
 
-            // Add marker for current position
+            // Add marker for current position with accuracy information
             const currentMarker = L.marker(currentPosition).addTo(map);
-            currentMarker.bindPopup("You are here").openPopup();
+            currentMarker.bindPopup(`You are here<br>Coordinates: [${lat.toFixed(8)}, ${lng.toFixed(8)}]<br>Accuracy: ±${accuracy.toFixed(2)}m`).openPopup();
 
-            updateStatus("Location found");
+            // Optionally add accuracy circle
+            L.circle(currentPosition, {
+              radius: accuracy,
+              color: '#0078D7',
+              fillColor: '#0078D7',
+              fillOpacity: 0.15
+            }).addTo(map);
+
+            updateStatus(`Location found (accuracy: ±${accuracy.toFixed(2)}m)`);
           },
           (error) => {
             console.error("Error getting location:", error);
             updateStatus("Error getting location: " + error.message);
-          }
+          },
+          options
         );
       } else {
         updateStatus("Geolocation is not supported by your browser");
@@ -205,7 +226,7 @@
       }
 
       const marker = L.marker([lat, lng], { icon: markerIcon }).addTo(map);
-      marker.bindPopup(`${selectedTag.charAt(0).toUpperCase() + selectedTag.slice(1)} at [${lat.toFixed(6)}, ${lng.toFixed(6)}]`);
+      marker.bindPopup(`${selectedTag.charAt(0).toUpperCase() + selectedTag.slice(1)} at [${lat.toFixed(8)}, ${lng.toFixed(8)}]`);
 
       // Add marker to list
       markers.push({
@@ -215,7 +236,7 @@
         time: new Date().toISOString()
       });
 
-      updateStatus(`Added ${selectedTag} marker`);
+      updateStatus(`Added ${selectedTag} marker at [${lat.toFixed(8)}, ${lng.toFixed(8)}]`);
       updateStats();
     }
 
@@ -332,7 +353,7 @@
         }
 
         const mapMarker = L.marker([marker.lat, marker.lng], { icon: markerIcon }).addTo(map);
-        mapMarker.bindPopup(`${marker.type.charAt(0).toUpperCase() + marker.type.slice(1)} at [${marker.lat.toFixed(6)}, ${marker.lng.toFixed(6)}]`);
+        mapMarker.bindPopup(`${marker.type.charAt(0).toUpperCase() + marker.type.slice(1)} at [${marker.lat.toFixed(8)}, ${marker.lng.toFixed(8)}]`);
       });
     }
 
